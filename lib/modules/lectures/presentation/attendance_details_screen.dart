@@ -232,6 +232,7 @@ class AttendanceDetailsScreen extends StatelessWidget {
         final student = students[index];
         return _StudentCard(
           student: student,
+          lecture: lecture,
           onTap: () {
             _showStudentDetailsBottomSheet(context, student);
           },
@@ -250,8 +251,70 @@ class AttendanceDetailsScreen extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => StudentDetailsBottomSheet(student: student),
+      builder: (context) =>
+          StudentDetailsBottomSheet(student: student, lecture: lecture),
     );
+  }
+}
+
+const _whatsappGreen = Color(0xFF25D366);
+
+String _normalizePhoneForWhatsApp(String phone) {
+  var digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+  if (digits.startsWith('0')) {
+    digits = '20${digits.substring(1)}';
+  } else if (!digits.startsWith('20')) {
+    digits = '20$digits';
+  }
+  return digits;
+}
+
+String _buildAttendanceMessage(
+  LectureEntity lecture,
+  LectureStudentEntity student, {
+  required bool toParent,
+}) {
+  final isAttended = student.attendance.isAttended;
+  if (toParent) {
+    return isAttended
+        ? 'السلام عليكم، ولي أمر الطالب/ة ${student.name}\n'
+              'نفيدكم بأنه تم تسجيل حضور الطالب/ة ${student.name} '
+              'في محاضرة "${lecture.description}" بتاريخ ${lecture.date}.'
+        : 'السلام عليكم، ولي أمر الطالب/ة ${student.name}\n'
+              'نفيدكم بأنه تم تسجيل غياب الطالب/ة ${student.name} '
+              'عن محاضرة "${lecture.description}" بتاريخ ${lecture.date}.\n'
+              'برجاء المتابعة والتواصل معنا.';
+  }
+  return isAttended
+      ? 'السلام عليكم ${student.name}\n'
+            'نفيدك بأنه تم تسجيل حضورك في محاضرة "${lecture.description}" '
+            'بتاريخ ${lecture.date}.'
+      : 'السلام عليكم ${student.name}\n'
+            'نفيدك بأنه تم تسجيل غيابك عن محاضرة "${lecture.description}" '
+            'بتاريخ ${lecture.date}.\n'
+            'برجاء التواصل لمعرفة السبب ومتابعة الشرح.';
+}
+
+Future<void> _sendWhatsAppReport(
+  BuildContext context,
+  LectureEntity lecture,
+  LectureStudentEntity student, {
+  required bool toParent,
+}) async {
+  final phone = toParent ? student.parentPhone : student.phone;
+  final message = _buildAttendanceMessage(lecture, student, toParent: toParent);
+  final uri = Uri.parse(
+    'https://wa.me/${_normalizePhoneForWhatsApp(phone)}'
+    '?text=${Uri.encodeComponent(message)}',
+  );
+  if (await canLaunchUrl(uri)) {
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } else {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا يمكن فتح تطبيق واتساب')),
+      );
+    }
   }
 }
 
@@ -290,9 +353,14 @@ class _StatCard extends StatelessWidget {
 
 class _StudentCard extends StatelessWidget {
   final LectureStudentEntity student;
+  final LectureEntity lecture;
   final VoidCallback onTap;
 
-  const _StudentCard({required this.student, required this.onTap});
+  const _StudentCard({
+    required this.student,
+    required this.lecture,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -381,7 +449,29 @@ class _StudentCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right),
+              if (lecture.status == LectureStatus.ended)
+                PopupMenuButton<bool>(
+                  icon: const Icon(Icons.chat, color: _whatsappGreen),
+                  tooltip: 'إرسال تقرير واتساب',
+                  onSelected: (toParent) => _sendWhatsAppReport(
+                    context,
+                    lecture,
+                    student,
+                    toParent: toParent,
+                  ),
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: false,
+                      child: Text('إرسال للطالب'),
+                    ),
+                    const PopupMenuItem(
+                      value: true,
+                      child: Text('إرسال لولي الأمر'),
+                    ),
+                  ],
+                )
+              else
+                const Icon(Icons.chevron_right),
             ],
           ),
         ),
@@ -392,8 +482,13 @@ class _StudentCard extends StatelessWidget {
 
 class StudentDetailsBottomSheet extends StatelessWidget {
   final LectureStudentEntity student;
+  final LectureEntity lecture;
 
-  const StudentDetailsBottomSheet({super.key, required this.student});
+  const StudentDetailsBottomSheet({
+    super.key,
+    required this.student,
+    required this.lecture,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -512,6 +607,54 @@ class StudentDetailsBottomSheet extends StatelessWidget {
               ),
             ],
           ),
+          if (lecture.status == LectureStatus.ended) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _sendWhatsAppReport(
+                      context,
+                      lecture,
+                      student,
+                      toParent: false,
+                    ),
+                    icon: const Icon(Icons.chat),
+                    label: Text(
+                      isAttended ? 'إرسال حضور للطالب' : 'إرسال غياب للطالب',
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _whatsappGreen,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _sendWhatsAppReport(
+                      context,
+                      lecture,
+                      student,
+                      toParent: true,
+                    ),
+                    icon: const Icon(Icons.chat),
+                    label: Text(
+                      isAttended
+                          ? 'إرسال حضور لولي الأمر'
+                          : 'إرسال غياب لولي الأمر',
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _whatsappGreen,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 16),
         ],
       ),

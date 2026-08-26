@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:samy_mossad_assistant/core/injection_container.dart' as di;
 import 'package:samy_mossad_assistant/modules/center_exams/domain/entities/center_exam_entity.dart';
+import 'package:samy_mossad_assistant/modules/center_exams/domain/entities/exam_result_entity.dart';
 import 'package:samy_mossad_assistant/modules/center_exams/presentation/add_exam_results_screen.dart';
 import 'package:samy_mossad_assistant/modules/center_exams/presentation/cubit/exam_results_cubit.dart';
 import 'package:samy_mossad_assistant/modules/center_exams/presentation/cubit/exam_results_state.dart';
@@ -341,6 +342,30 @@ class ExamResultsScreen extends StatelessWidget {
                                               ),
                                             ],
                                           ),
+                                          PopupMenuButton<bool>(
+                                            icon: const Icon(
+                                              Icons.chat,
+                                              color: _whatsappGreen,
+                                            ),
+                                            tooltip: 'إرسال الدرجة واتساب',
+                                            onSelected: (toParent) =>
+                                                _sendWhatsAppResult(
+                                                  context,
+                                                  exam,
+                                                  result,
+                                                  toParent: toParent,
+                                                ),
+                                            itemBuilder: (context) => [
+                                              const PopupMenuItem(
+                                                value: false,
+                                                child: Text('إرسال للطالب'),
+                                              ),
+                                              const PopupMenuItem(
+                                                value: true,
+                                                child: Text('إرسال لولي الأمر'),
+                                              ),
+                                            ],
+                                          ),
                                         ],
                                       ),
                                     ),
@@ -385,7 +410,11 @@ class ExamResultsScreen extends StatelessWidget {
     return Colors.red;
   }
 
-  void _showResultDetails(BuildContext context, result, int totalMarks) {
+  void _showResultDetails(
+    BuildContext context,
+    ExamResultEntity result,
+    int totalMarks,
+  ) {
     final percentage = (result.mark / totalMarks * 100);
 
     showModalBottomSheet(
@@ -482,6 +511,46 @@ class ExamResultsScreen extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _sendWhatsAppResult(
+                      context,
+                      exam,
+                      result,
+                      toParent: false,
+                    ),
+                    icon: const Icon(Icons.chat, size: 18),
+                    label: const Text('إرسال الدرجة للطالب'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _whatsappGreen,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _sendWhatsAppResult(
+                      context,
+                      exam,
+                      result,
+                      toParent: true,
+                    ),
+                    icon: const Icon(Icons.chat, size: 18),
+                    label: const Text('إرسال الدرجة لولي الأمر'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _whatsappGreen,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -526,6 +595,62 @@ class ExamResultsScreen extends StatelessWidget {
           const SnackBar(content: Text('لا يمكن فتح تطبيق الهاتف')),
         );
       }
+    }
+  }
+}
+
+const _whatsappGreen = Color(0xFF25D366);
+
+String _normalizePhoneForWhatsApp(String phone) {
+  var digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+  if (digits.startsWith('0')) {
+    digits = '20${digits.substring(1)}';
+  } else if (!digits.startsWith('20')) {
+    digits = '20$digits';
+  }
+  return digits;
+}
+
+String _buildResultMessage(
+  CenterExamEntity exam,
+  ExamResultEntity result, {
+  required bool toParent,
+}) {
+  final percentage = (result.mark / exam.totalMarks * 100).toStringAsFixed(0);
+  final notesLine = (result.notes != null && result.notes!.isNotEmpty)
+      ? '\nملاحظات: ${result.notes}'
+      : '';
+  if (toParent) {
+    return 'السلام عليكم، ولي أمر الطالب/ة ${result.studentName}\n'
+        'نفيدكم بأن درجة الطالب/ة ${result.studentName} في اختبار '
+        '"${exam.name}" هي ${result.mark.toStringAsFixed(1)} '
+        'من ${exam.totalMarks} ($percentage%).$notesLine';
+  }
+  return 'السلام عليكم ${result.studentName}\n'
+      'نفيدك بأن درجتك في اختبار "${exam.name}" هي '
+      '${result.mark.toStringAsFixed(1)} من ${exam.totalMarks} '
+      '($percentage%).$notesLine';
+}
+
+Future<void> _sendWhatsAppResult(
+  BuildContext context,
+  CenterExamEntity exam,
+  ExamResultEntity result, {
+  required bool toParent,
+}) async {
+  final phone = toParent ? result.parentPhone : result.studentPhone;
+  final message = _buildResultMessage(exam, result, toParent: toParent);
+  final uri = Uri.parse(
+    'https://wa.me/${_normalizePhoneForWhatsApp(phone)}'
+    '?text=${Uri.encodeComponent(message)}',
+  );
+  if (await canLaunchUrl(uri)) {
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } else {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا يمكن فتح تطبيق واتساب')),
+      );
     }
   }
 }

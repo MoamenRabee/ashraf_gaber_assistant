@@ -20,6 +20,7 @@ class AttendanceLocalDataSourceImpl implements AttendanceLocalDataSource {
       studentCode: attendance.studentCode,
       attendedAt: attendance.attendedAt,
       isSynced: attendance.isSynced,
+      isMakeUp: attendance.isMakeUp,
     );
     return await databaseHelper.insertAttendance(model.toDatabase());
   }
@@ -51,7 +52,13 @@ class AttendanceLocalDataSourceImpl implements AttendanceLocalDataSource {
   }
 
   @override
-  Future<StudentEntity?> getStudentByCode(int studentCode) async {
-    return await databaseHelper.getStudentByCode(studentCode);
+  Future<StudentEntity?> getStudentByCode(
+    int studentCode, {
+    int? centerId,
+  }) async {
+    return await databaseHelper.getStudentByCode(
+      studentCode,
+      centerId: centerId,
+    );
   }
 }

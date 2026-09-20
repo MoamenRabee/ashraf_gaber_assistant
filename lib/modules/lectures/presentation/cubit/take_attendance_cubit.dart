@@ -5,6 +5,7 @@ import 'package:samy_mossad_assistant/core/database_helper.dart';
 import 'package:samy_mossad_assistant/modules/lectures/data_source/attendance_local_data_source.dart';
 import 'package:samy_mossad_assistant/modules/lectures/domain/entities/local_attendance_entity.dart';
 import 'package:samy_mossad_assistant/modules/lectures/domain/entities/lecture_entity.dart';
+import 'package:samy_mossad_assistant/modules/lectures/domain/usecases/add_make_up_student_usecase.dart';
 import 'package:samy_mossad_assistant/modules/lectures/domain/usecases/sync_attendance_usecase.dart';
 import 'package:samy_mossad_assistant/modules/lectures/presentation/cubit/take_attendance_state.dart';
 import 'package:samy_mossad_assistant/modules/students/domain/entities/student_entity.dart';
@@ -13,12 +14,14 @@ class TakeAttendanceCubit extends Cubit<TakeAttendanceState> {
   final AttendanceLocalDataSource localDataSource;
   final DatabaseHelper databaseHelper;
   final SyncAttendanceUseCase syncAttendanceUseCase;
+  final AddMakeUpStudentUseCase addMakeUpStudentUseCase;
   Timer? _debounceTimer;
 
   TakeAttendanceCubit({
     required this.localDataSource,
     required this.databaseHelper,
     required this.syncAttendanceUseCase,
+    required this.addMakeUpStudentUseCase,
   }) : super(TakeAttendanceInitial());
 
   Future<void> loadAttendance(int lectureId) async {
@@ -41,14 +44,31 @@ class TakeAttendanceCubit extends Cubit<TakeAttendanceState> {
         return;
       }
 
-      // البحث عن الطالب بالكود
-      final student = await localDataSource.getStudentByCode(studentCode);
+      // البحث عن الطالب بالكود داخل سنتر المحاضرة فقط
+      final student = await localDataSource.getStudentByCode(
+        studentCode,
+        centerId: lecture.center.id,
+      );
       if (student == null) {
-        emit(
-          TakeAttendanceStudentNotFound(
-            'لم يتم العثور على الطالب بالكود: $studentCode',
-          ),
+        // الطالب مش في السنتر ده، نشوف هل هو موجود في سنتر تاني
+        final studentInOtherCenter = await localDataSource.getStudentByCode(
+          studentCode,
         );
+        if (studentInOtherCenter == null) {
+          emit(
+            TakeAttendanceStudentNotFound(
+              'لم يتم العثور على الطالب بالكود: $studentCode',
+            ),
+          );
+        } else {
+          emit(
+            TakeAttendanceStudentNotFound(
+              'الطالب ${studentInOtherCenter.name} موجود لكن لا يمكن تسجيل حضوره هنا لأنه ليس في هذا السنتر\n'
+              'سنتر الطالب: ${studentInOtherCenter.center.name}\n'
+              'سنتر المحاضرة: ${lecture.center.name}',
+            ),
+          );
+        }
         return;
       }
 
@@ -69,7 +89,12 @@ class TakeAttendanceCubit extends Cubit<TakeAttendanceState> {
     }
   }
 
-  Future<void> searchStudents(String query, LectureEntity lecture) async {
+  /// [anyCenter] للتعويض: الطالب ممكن يكون من أي سنتر (بنفس صف المحاضرة).
+  Future<void> searchStudents(
+    String query,
+    LectureEntity lecture, {
+    bool anyCenter = false,
+  }) async {
     if (state is! TakeAttendanceLoaded) return;
 
     final currentState = state as TakeAttendanceLoaded;
@@ -95,7 +120,7 @@ class TakeAttendanceCubit extends Cubit<TakeAttendanceState> {
         final students = await databaseHelper.searchStudents(
           searchQuery: query,
           classroomId: lecture.classroom.id,
-          centerId: lecture.center.id,
+          centerId: anyCenter ? null : lecture.center.id,
         );
         emit(
           currentState.copyWith(searchResults: students, searchQuery: query),
@@ -104,6 +129,88 @@ class TakeAttendanceCubit extends Cubit<TakeAttendanceState> {
         emit(TakeAttendanceError('فشل في البحث: ${e.toString()}'));
       }
     });
+  }
+
+  void clearSearch() {
+    _debounceTimer?.cancel();
+    final currentState = state;
+    if (currentState is! TakeAttendanceLoaded) return;
+
+    emit(
+      currentState.copyWith(
+        searchResults: [],
+        searchQuery: '',
+        clearSearchResults: true,
+      ),
+    );
+  }
+
+  /// تسجيل حضور طالب بيعوض في المحاضرة دي بدل محاضرة تانية.
+  /// بيتبعت للسيرفر فوراً وبعد نجاحه بيتسجل في الحضور على الجهاز (كتعويض ومتزامن).
+  Future<void> addMakeUpStudent(
+    StudentEntity student,
+    LectureEntity lecture, {
+    String? notes,
+  }) async {
+    try {
+      final currentAttendance = await localDataSource.getAttendanceByLecture(
+        lecture.id,
+      );
+      if (currentAttendance.any((a) => a.studentCode == student.studentId)) {
+        emit(const TakeAttendanceError('هذا الطالب مسجل حضوره بالفعل'));
+        await loadAttendance(lecture.id);
+        return;
+      }
+
+      final connectivityResult = await Connectivity().checkConnectivity();
+      if (connectivityResult.contains(ConnectivityResult.none)) {
+        emit(const TakeAttendanceError('لا يوجد اتصال بالإنترنت'));
+        await loadAttendance(lecture.id);
+        return;
+      }
+
+      emit(TakeAttendanceLoading());
+
+      final result = await addMakeUpStudentUseCase(
+        lectureId: lecture.id,
+        studentCode: student.studentId,
+        notes: notes,
+      );
+
+      final error = result.fold((error) => error, (_) => null);
+      if (error != null) {
+        emit(TakeAttendanceError(error));
+        await loadAttendance(lecture.id);
+        return;
+      }
+
+      // السيرفر سجله، نسجله على الجهاز كمان عشان يظهر في القائمة.
+      // isSynced = true عشان المزامنة العادية ماتبعتوش تاني كحضور عادي.
+      await localDataSource.addAttendance(
+        LocalAttendanceEntity(
+          lectureId: lecture.id,
+          lectureDescription: lecture.description,
+          studentId: student.id,
+          studentName: student.name,
+          studentCode: student.studentId,
+          attendedAt: _formatNow(),
+          isSynced: true,
+          isMakeUp: true,
+        ),
+      );
+
+      emit(TakeAttendanceSuccess('تم تسجيل تعويض ${student.name}'));
+      await loadAttendance(lecture.id);
+    } catch (e) {
+      emit(TakeAttendanceError('فشل في تسجيل التعويض: ${e.toString()}'));
+      await loadAttendance(lecture.id);
+    }
+  }
+
+  String _formatNow() {
+    final now = DateTime.now();
+    return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
   }
 
   Future<void> addAttendance(
@@ -149,10 +256,7 @@ class TakeAttendanceCubit extends Cubit<TakeAttendanceState> {
         return;
       }
 
-      final now = DateTime.now();
-      final attendedAt =
-          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
-          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+      final attendedAt = _formatNow();
 
       final attendance = LocalAttendanceEntity(
         lectureId: lecture.id,

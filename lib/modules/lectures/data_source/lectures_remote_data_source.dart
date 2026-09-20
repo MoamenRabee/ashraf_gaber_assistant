@@ -4,4 +4,11 @@ abstract class LecturesRemoteDataSource {
   Future<List<LectureModel>> getLectures();
   Future<Map<String, dynamic>> endLecture(int lectureId);
   Future<Map<String, dynamic>> reopenLecture(int lectureId);
+  Future<void> createLecture({
+    required String description,
+    required int classroomId,
+    required int centerId,
+    required String date,
+    required String time,
+  });
 }

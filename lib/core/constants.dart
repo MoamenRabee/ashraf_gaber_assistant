@@ -1,6 +1,8 @@
 class Constants {
   static const String baseUrl = "https://ashraf-gaber.codak-e-school.com/api";
+  // static const String baseUrl = "http://172.20.10.2/ashraf_gaber/public/api";
   static const String storage = "https://ashraf-gaber.codak-e-school.com/storage";
+  // static const String storage = "http://172.20.10.2/ashraf_gaber/public/storage"; 
 }
 
 class Endpoints {
@@ -11,6 +13,8 @@ class Endpoints {
   static const String uploadStudentData = "/assistants/uploadStudentData";
   static const String endLecture = "/assistants/endLecture";
   static const String reopenLecture = "/assistants/reopenLecture";
+  static const String createLecture = "/assistants/createLecture";
+  static const String addMakeUpStudent = "/assistants/addMakeUpStudent";
   static const String getLocalExams = "/assistants/local-exams";
   static String getExamResults(int examId) => "/assistants/local-exams/$examId/results";
   static String getExamStudents(int classroomId, int centerId) =>

@@ -9,6 +9,7 @@ class LocalAttendanceEntity extends Equatable {
   final int studentCode;
   final String attendedAt;
   final bool isSynced;
+  final bool isMakeUp;
 
   const LocalAttendanceEntity({
     this.id,
@@ -19,6 +20,7 @@ class LocalAttendanceEntity extends Equatable {
     required this.studentCode,
     required this.attendedAt,
     this.isSynced = false,
+    this.isMakeUp = false,
   });
 
   @override
@@ -31,5 +33,6 @@ class LocalAttendanceEntity extends Equatable {
     studentCode,
     attendedAt,
     isSynced,
+    isMakeUp,
   ];
 }

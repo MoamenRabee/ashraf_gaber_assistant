@@ -6,7 +6,7 @@ import 'package:sqflite/sqflite.dart';
 class DatabaseHelper {
   static Database? _database;
   static const String _databaseName = 'students.db';
-  static const int _databaseVersion = 2;
+  static const int _databaseVersion = 3;
 
   static const String tableStudents = 'students';
   static const String tableAttendance = 'attendance';
@@ -54,7 +54,8 @@ class DatabaseHelper {
         student_name TEXT NOT NULL,
         student_code INTEGER NOT NULL,
         attended_at TEXT NOT NULL,
-        is_synced INTEGER NOT NULL DEFAULT 0
+        is_synced INTEGER NOT NULL DEFAULT 0,
+        is_make_up INTEGER NOT NULL DEFAULT 0
       )
     ''');
     log('Database tables created');
@@ -75,6 +76,12 @@ class DatabaseHelper {
         )
       ''');
       log('Attendance table created during upgrade');
+    }
+    if (oldVersion < 3) {
+      await db.execute(
+        'ALTER TABLE $tableAttendance ADD COLUMN is_make_up INTEGER NOT NULL DEFAULT 0',
+      );
+      log('is_make_up column added to attendance table');
     }
   }
 
@@ -305,12 +312,17 @@ class DatabaseHelper {
     return count;
   }
 
-  Future<StudentModel?> getStudentByCode(int studentCode) async {
+  Future<StudentModel?> getStudentByCode(
+    int studentCode, {
+    int? centerId,
+  }) async {
     final db = await database;
     final maps = await db.query(
       tableStudents,
-      where: 'student_id = ?',
-      whereArgs: [studentCode],
+      where: centerId != null
+          ? 'student_id = ? AND center_id = ?'
+          : 'student_id = ?',
+      whereArgs: centerId != null ? [studentCode, centerId] : [studentCode],
       limit: 1,
     );
 

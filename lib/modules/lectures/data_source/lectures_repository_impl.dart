@@ -37,4 +37,26 @@ class LecturesRepositoryImpl implements LecturesRepository {
       return Left(e.toString());
     }
   }
+
+  @override
+  Future<Either<String, void>> createLecture({
+    required String description,
+    required int classroomId,
+    required int centerId,
+    required String date,
+    required String time,
+  }) async {
+    try {
+      await remoteDataSource.createLecture(
+        description: description,
+        classroomId: classroomId,
+        centerId: centerId,
+        date: date,
+        time: time,
+      );
+      return const Right(null);
+    } catch (e) {
+      return Left(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
 }

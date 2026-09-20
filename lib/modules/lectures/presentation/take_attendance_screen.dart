@@ -236,6 +236,23 @@ class TakeAttendanceScreen extends StatelessWidget {
                       ),
                     ),
 
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _showMakeUpSearchDialog(context),
+                          icon: const Icon(Icons.swap_horiz),
+                          label: const Text('تعويض طالب'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                    ),
+
                     const SizedBox(height: 16),
 
                     // Attendance List
@@ -304,16 +321,48 @@ class TakeAttendanceScreen extends StatelessWidget {
   }
 
   void _showSearchDialog(BuildContext context) {
+    final cubit = context.read<TakeAttendanceCubit>();
+    _showSearchSheet(
+      context,
+      StudentSearchBottomSheet(
+        lecture: lecture,
+        onStudentSelected: (student) => cubit.addAttendance(student, lecture),
+      ),
+    );
+  }
+
+  void _showMakeUpSearchDialog(BuildContext context) {
+    final cubit = context.read<TakeAttendanceCubit>();
+    _showSearchSheet(
+      context,
+      StudentSearchBottomSheet(
+        lecture: lecture,
+        title: 'تعويض طالب',
+        isMakeUp: true,
+        onStudentSelected: (student) async {
+          final notes = await showDialog<String>(
+            context: context,
+            builder: (_) => _MakeUpConfirmDialog(student: student),
+          );
+          if (notes == null) return;
+          cubit.addMakeUpStudent(student, lecture, notes: notes);
+        },
+      ),
+    );
+  }
+
+  void _showSearchSheet(BuildContext context, Widget sheet) {
+    final cubit = context.read<TakeAttendanceCubit>();
+    // مسح نتائج البحث القديمة عشان مايظهرش نتائج من بحث تاني
+    cubit.clearSearch();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (dialogContext) => BlocProvider.value(
-        value: context.read<TakeAttendanceCubit>(),
-        child: StudentSearchBottomSheet(lecture: lecture),
-      ),
+      builder: (dialogContext) =>
+          BlocProvider.value(value: cubit, child: sheet),
     );
   }
 
@@ -359,7 +408,10 @@ class TakeAttendanceScreen extends StatelessWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('حذف الحضور'),
-        content: Text('هل تريد حذف حضور ${attendance.studentName}؟'),
+        content: Text(
+          'هل تريد حذف حضور ${attendance.studentName}؟'
+          '${attendance.isMakeUp ? '\n\nهذا تعويض متسجل على السيرفر، الحذف هنا من الجهاز فقط.' : ''}',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
@@ -451,12 +503,39 @@ class _AttendanceCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    attendance.studentName,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          attendance.studentName,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      if (attendance.isMakeUp) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.orange,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            'تعويض',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 4),
                   Row(
@@ -598,10 +677,86 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   }
 }
 
+class _MakeUpConfirmDialog extends StatefulWidget {
+  final StudentEntity student;
+
+  const _MakeUpConfirmDialog({required this.student});
+
+  @override
+  State<_MakeUpConfirmDialog> createState() => _MakeUpConfirmDialogState();
+}
+
+class _MakeUpConfirmDialogState extends State<_MakeUpConfirmDialog> {
+  final TextEditingController notesController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    // اقتراح ملاحظة بسنتر الطالب الأصلي
+    notesController.text = 'بيعوض من سنتر ${widget.student.center.name}';
+  }
+
+  @override
+  void dispose() {
+    notesController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final student = widget.student;
+    return AlertDialog(
+      title: const Text('تأكيد التعويض'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('الاسم: ${student.name}'),
+            Text('الكود: ${student.studentId}'),
+            Text('السنتر: ${student.center.name}'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: notesController,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'ملاحظات (اختياري)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('إلغاء'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, notesController.text.trim()),
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+          child: const Text('تسجيل التعويض'),
+        ),
+      ],
+    );
+  }
+}
+
 class StudentSearchBottomSheet extends StatelessWidget {
   final LectureEntity lecture;
+  final String title;
 
-  const StudentSearchBottomSheet({super.key, required this.lecture});
+  /// التعويض: بيبحث في كل السناتر (بنفس صف المحاضرة) وبيعرض سنتر الطالب.
+  final bool isMakeUp;
+  final void Function(StudentEntity student) onStudentSelected;
+
+  const StudentSearchBottomSheet({
+    super.key,
+    required this.lecture,
+    required this.onStudentSelected,
+    this.title = 'بحث عن طالب',
+    this.isMakeUp = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -621,9 +776,12 @@ class StudentSearchBottomSheet extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'بحث عن طالب',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 16),
               TextField(
@@ -639,6 +797,7 @@ class StudentSearchBottomSheet extends StatelessWidget {
                   context.read<TakeAttendanceCubit>().searchStudents(
                     value,
                     lecture,
+                    anyCenter: isMakeUp,
                   );
                 },
               ),
@@ -674,14 +833,12 @@ class StudentSearchBottomSheet extends StatelessWidget {
                         ),
                         title: Text(student.name),
                         subtitle: Text(
-                          'كود: ${student.studentId} | ${student.phone}',
+                          'كود: ${student.studentId} | ${student.phone}'
+                          '${isMakeUp ? '\nسنتر: ${student.center.name}' : ''}',
                         ),
                         onTap: () {
-                          context.read<TakeAttendanceCubit>().addAttendance(
-                            student,
-                            lecture,
-                          );
                           Navigator.pop(context);
+                          onStudentSelected(student);
                         },
                       );
                     },

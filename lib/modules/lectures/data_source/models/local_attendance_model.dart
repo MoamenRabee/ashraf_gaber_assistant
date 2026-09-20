@@ -10,6 +10,7 @@ class LocalAttendanceModel extends LocalAttendanceEntity {
     required super.studentCode,
     required super.attendedAt,
     super.isSynced,
+    super.isMakeUp,
   });
 
   factory LocalAttendanceModel.fromDatabase(Map<String, dynamic> map) {
@@ -22,6 +23,7 @@ class LocalAttendanceModel extends LocalAttendanceEntity {
       studentCode: map['student_code'] as int,
       attendedAt: map['attended_at'] as String,
       isSynced: (map['is_synced'] as int) == 1,
+      isMakeUp: (map['is_make_up'] as int? ?? 0) == 1,
     );
   }
 
@@ -35,6 +37,7 @@ class LocalAttendanceModel extends LocalAttendanceEntity {
       'student_code': studentCode,
       'attended_at': attendedAt,
       'is_synced': isSynced ? 1 : 0,
+      'is_make_up': isMakeUp ? 1 : 0,
     };
   }
 }

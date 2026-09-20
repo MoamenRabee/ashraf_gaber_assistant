@@ -5,4 +5,11 @@ abstract class LecturesRepository {
   Future<Either<String, List<LectureEntity>>> getLectures();
   Future<Either<String, Map<String, dynamic>>> endLecture(int lectureId);
   Future<Either<String, Map<String, dynamic>>> reopenLecture(int lectureId);
+  Future<Either<String, void>> createLecture({
+    required String description,
+    required int classroomId,
+    required int centerId,
+    required String date,
+    required String time,
+  });
 }

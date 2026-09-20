@@ -14,68 +14,56 @@ class LecturesLoading extends LecturesState {}
 
 class LecturesLoaded extends LecturesState {
   final List<LectureEntity> lectures;
+
+  /// المحاضرات الخاصة بالسنتر والصف المختارين بعد تطبيق فلتر الحالة والتاريخ.
+  /// فاضية طالما لم يتم اختيار سنتر وصف.
   final List<LectureEntity> filteredLectures;
-  final List<Map<String, dynamic>> classrooms;
+
+  /// كل السناتر مع عدد المحاضرات: {id, name, count}
   final List<Map<String, dynamic>> centers;
-  final int? selectedClassroomId;
+
+  /// صفوف السنتر المختار فقط مع عدد المحاضرات: {id, name, count}
+  final List<Map<String, dynamic>> classrooms;
   final int? selectedCenterId;
+  final int? selectedClassroomId;
   final LectureStatus? selectedStatus;
   final String? selectedDate;
 
   const LecturesLoaded({
     required this.lectures,
-    List<LectureEntity>? filteredLectures,
-    this.classrooms = const [],
+    required this.filteredLectures,
     this.centers = const [],
-    this.selectedClassroomId,
+    this.classrooms = const [],
     this.selectedCenterId,
+    this.selectedClassroomId,
     this.selectedStatus,
     this.selectedDate,
-  }) : filteredLectures = filteredLectures ?? lectures;
+  });
+
+  bool get hasActiveFilters => selectedStatus != null || selectedDate != null;
+
+  String? get selectedCenterName => _nameOf(centers, selectedCenterId);
+
+  String? get selectedClassroomName => _nameOf(classrooms, selectedClassroomId);
+
+  static String? _nameOf(List<Map<String, dynamic>> items, int? id) {
+    for (final item in items) {
+      if (item['id'] == id) return item['name'] as String;
+    }
+    return null;
+  }
 
   @override
   List<Object?> get props => [
     lectures,
     filteredLectures,
-    classrooms,
     centers,
-    selectedClassroomId,
+    classrooms,
     selectedCenterId,
+    selectedClassroomId,
     selectedStatus,
     selectedDate,
   ];
-
-  LecturesLoaded copyWith({
-    List<LectureEntity>? lectures,
-    List<LectureEntity>? filteredLectures,
-    List<Map<String, dynamic>>? classrooms,
-    List<Map<String, dynamic>>? centers,
-    int? selectedClassroomId,
-    int? selectedCenterId,
-    LectureStatus? selectedStatus,
-    String? selectedDate,
-    bool clearClassroom = false,
-    bool clearCenter = false,
-    bool clearStatus = false,
-    bool clearDate = false,
-  }) {
-    return LecturesLoaded(
-      lectures: lectures ?? this.lectures,
-      filteredLectures: filteredLectures ?? this.filteredLectures,
-      classrooms: classrooms ?? this.classrooms,
-      centers: centers ?? this.centers,
-      selectedClassroomId: clearClassroom
-          ? null
-          : (selectedClassroomId ?? this.selectedClassroomId),
-      selectedCenterId: clearCenter
-          ? null
-          : (selectedCenterId ?? this.selectedCenterId),
-      selectedStatus: clearStatus
-          ? null
-          : (selectedStatus ?? this.selectedStatus),
-      selectedDate: clearDate ? null : (selectedDate ?? this.selectedDate),
-    );
-  }
 }
 
 class LecturesError extends LecturesState {

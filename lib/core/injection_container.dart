@@ -42,6 +42,7 @@ import 'package:samy_mossad_assistant/modules/lectures/data_source/lectures_remo
 import 'package:samy_mossad_assistant/modules/lectures/data_source/lectures_remote_data_source_impl.dart';
 import 'package:samy_mossad_assistant/modules/lectures/data_source/lectures_repository_impl.dart';
 import 'package:samy_mossad_assistant/modules/lectures/domain/repository/lectures_repository.dart';
+import 'package:samy_mossad_assistant/modules/lectures/domain/usecases/create_lecture_usecase.dart';
 import 'package:samy_mossad_assistant/modules/lectures/domain/usecases/end_lecture_usecase.dart';
 import 'package:samy_mossad_assistant/modules/lectures/domain/usecases/get_lectures_usecase.dart';
 import 'package:samy_mossad_assistant/modules/lectures/domain/usecases/reopen_lecture_usecase.dart';
@@ -58,6 +59,7 @@ import 'package:samy_mossad_assistant/modules/lectures/data_source/attendance_re
 import 'package:samy_mossad_assistant/modules/lectures/data_source/attendance_remote_data_source_impl.dart';
 import 'package:samy_mossad_assistant/modules/lectures/data_source/attendance_repository_impl.dart';
 import 'package:samy_mossad_assistant/modules/lectures/domain/repository/attendance_repository.dart';
+import 'package:samy_mossad_assistant/modules/lectures/domain/usecases/add_make_up_student_usecase.dart';
 import 'package:samy_mossad_assistant/modules/lectures/domain/usecases/sync_attendance_usecase.dart';
 import 'package:samy_mossad_assistant/modules/lectures/presentation/cubit/take_attendance_cubit.dart';
 
@@ -104,16 +106,33 @@ Future<void> init() async {
 
   // ============ Lectures Module ============
   // Cubits
-  sl.registerFactory(() => LecturesCubit(getLecturesUseCase: sl(), endLectureUseCase: sl(), reopenLectureUseCase: sl()));
+  sl.registerFactory(
+    () => LecturesCubit(
+      getLecturesUseCase: sl(),
+      endLectureUseCase: sl(),
+      reopenLectureUseCase: sl(),
+      createLectureUseCase: sl(),
+      getFiltersUseCase: sl(),
+    ),
+  );
   sl.registerFactory(() => LectureStudentsCubit(sl()));
-  sl.registerFactory(() => TakeAttendanceCubit(localDataSource: sl(), databaseHelper: sl(), syncAttendanceUseCase: sl()));
+  sl.registerFactory(
+    () => TakeAttendanceCubit(
+      localDataSource: sl(),
+      databaseHelper: sl(),
+      syncAttendanceUseCase: sl(),
+      addMakeUpStudentUseCase: sl(),
+    ),
+  );
 
   // Use cases
   sl.registerLazySingleton(() => GetLecturesUseCase(sl()));
   sl.registerLazySingleton(() => EndLectureUseCase(sl()));
   sl.registerLazySingleton(() => ReopenLectureUseCase(sl()));
+  sl.registerLazySingleton(() => CreateLectureUseCase(sl()));
   sl.registerLazySingleton(() => GetLectureStudentsUseCase(sl()));
   sl.registerLazySingleton(() => SyncAttendanceUseCase(sl()));
+  sl.registerLazySingleton(() => AddMakeUpStudentUseCase(sl()));
 
   // Repository
   sl.registerLazySingleton<LecturesRepository>(() => LecturesRepositoryImpl(remoteDataSource: sl()));

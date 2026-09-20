@@ -65,4 +65,33 @@ class LecturesRemoteDataSourceImpl implements LecturesRemoteDataSource {
       throw Exception('حدث خطأ: ${e.toString()}');
     }
   }
+
+  @override
+  Future<void> createLecture({
+    required String description,
+    required int classroomId,
+    required int centerId,
+    required String date,
+    required String time,
+  }) async {
+    try {
+      final Response response = await DioHelper.post(
+        path: Endpoints.createLecture,
+        data: {
+          'description': description,
+          'classroom_id': classroomId,
+          'center_id': centerId,
+          'date': date,
+          'time': time,
+        },
+      );
+
+      final data = response.data;
+      if (data is! Map || data['status'] != true) {
+        throw Exception((data is Map ? data['message'] : null) ?? 'فشل في إضافة المحاضرة');
+      }
+    } on DioException catch (e) {
+      throw Exception('حدث خطأ في الاتصال: ${e.message}');
+    }
+  }
 }

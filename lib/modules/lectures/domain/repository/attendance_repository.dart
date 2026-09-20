@@ -6,4 +6,10 @@ abstract class AttendanceRepository {
     int lectureId,
     List<LocalAttendanceEntity> attendanceList,
   );
+
+  Future<Either<String, void>> addMakeUpStudent({
+    required int lectureId,
+    required int studentCode,
+    String? notes,
+  });
 }

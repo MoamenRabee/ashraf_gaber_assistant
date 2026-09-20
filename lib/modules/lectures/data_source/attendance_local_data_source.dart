@@ -7,5 +7,5 @@ abstract class AttendanceLocalDataSource {
   Future<int> deleteAttendance(int id);
   Future<List<LocalAttendanceEntity>> getUnsyncedAttendance(int lectureId);
   Future<int> markAttendanceAsSynced(int id);
-  Future<StudentEntity?> getStudentByCode(int studentCode);
+  Future<StudentEntity?> getStudentByCode(int studentCode, {int? centerId});
 }

@@ -47,4 +47,22 @@ class AttendanceRepositoryImpl implements AttendanceRepository {
       return Left(e.toString());
     }
   }
+
+  @override
+  Future<Either<String, void>> addMakeUpStudent({
+    required int lectureId,
+    required int studentCode,
+    String? notes,
+  }) async {
+    try {
+      await remoteDataSource.addMakeUpStudent(
+        lectureId: lectureId,
+        studentCode: studentCode,
+        notes: notes,
+      );
+      return const Right(null);
+    } catch (e) {
+      return Left(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
 }

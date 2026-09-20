@@ -2,6 +2,7 @@ import 'package:dartz/dartz.dart';
 import 'package:samy_mossad_assistant/modules/lectures/data_source/attendance_local_data_source.dart';
 import 'package:samy_mossad_assistant/modules/lectures/data_source/attendance_remote_data_source.dart';
 import 'package:samy_mossad_assistant/modules/lectures/domain/entities/local_attendance_entity.dart';
+import 'package:samy_mossad_assistant/modules/lectures/domain/entities/student_absence_entity.dart';
 import 'package:samy_mossad_assistant/modules/lectures/domain/repository/attendance_repository.dart';
 
 class AttendanceRepositoryImpl implements AttendanceRepository {
@@ -61,6 +62,26 @@ class AttendanceRepositoryImpl implements AttendanceRepository {
         notes: notes,
       );
       return const Right(null);
+    } catch (e) {
+      return Left(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  @override
+  Future<Either<String, StudentAbsenceEntity>> checkStudentAbsence({
+    required List<String> dates,
+    required int classroomId,
+    required int centerId,
+    required int studentCode,
+  }) async {
+    try {
+      final result = await remoteDataSource.checkStudentAbsence(
+        dates: dates,
+        classroomId: classroomId,
+        centerId: centerId,
+        studentCode: studentCode,
+      );
+      return Right(result);
     } catch (e) {
       return Left(e.toString().replaceFirst('Exception: ', ''));
     }

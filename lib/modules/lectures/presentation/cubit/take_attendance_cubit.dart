@@ -6,6 +6,7 @@ import 'package:samy_mossad_assistant/modules/lectures/data_source/attendance_lo
 import 'package:samy_mossad_assistant/modules/lectures/domain/entities/local_attendance_entity.dart';
 import 'package:samy_mossad_assistant/modules/lectures/domain/entities/lecture_entity.dart';
 import 'package:samy_mossad_assistant/modules/lectures/domain/usecases/add_make_up_student_usecase.dart';
+import 'package:samy_mossad_assistant/modules/lectures/domain/usecases/check_student_absence_usecase.dart';
 import 'package:samy_mossad_assistant/modules/lectures/domain/usecases/sync_attendance_usecase.dart';
 import 'package:samy_mossad_assistant/modules/lectures/presentation/cubit/take_attendance_state.dart';
 import 'package:samy_mossad_assistant/modules/students/domain/entities/student_entity.dart';
@@ -15,13 +16,23 @@ class TakeAttendanceCubit extends Cubit<TakeAttendanceState> {
   final DatabaseHelper databaseHelper;
   final SyncAttendanceUseCase syncAttendanceUseCase;
   final AddMakeUpStudentUseCase addMakeUpStudentUseCase;
+  final CheckStudentAbsenceUseCase checkStudentAbsenceUseCase;
   Timer? _debounceTimer;
+
+  /// تواريخ فحص الغياب (yyyy-MM-dd) لحد ما الشاشة تتقفل أو يتعمل reset
+  final List<String> _checkDates = [];
+
+  /// الطلاب اللي بنفحص غيابهم دلوقتي
+  final List<String> _checkingAbsenceOf = [];
+
+  static const Duration _absenceCheckTimeout = Duration(seconds: 20);
 
   TakeAttendanceCubit({
     required this.localDataSource,
     required this.databaseHelper,
     required this.syncAttendanceUseCase,
     required this.addMakeUpStudentUseCase,
+    required this.checkStudentAbsenceUseCase,
   }) : super(TakeAttendanceInitial());
 
   Future<void> loadAttendance(int lectureId) async {
@@ -29,7 +40,13 @@ class TakeAttendanceCubit extends Cubit<TakeAttendanceState> {
       final attendanceList = await localDataSource.getAttendanceByLecture(
         lectureId,
       );
-      emit(TakeAttendanceLoaded(attendanceList: attendanceList));
+      emit(
+        TakeAttendanceLoaded(
+          attendanceList: attendanceList,
+          checkDates: List.of(_checkDates),
+          checkingAbsenceOf: List.of(_checkingAbsenceOf),
+        ),
+      );
     } catch (e) {
       emit(TakeAttendanceError('فشل في تحميل قائمة الحضور: ${e.toString()}'));
     }
@@ -40,7 +57,7 @@ class TakeAttendanceCubit extends Cubit<TakeAttendanceState> {
       // تحويل QR code إلى رقم
       final studentCode = int.tryParse(qrCode);
       if (studentCode == null) {
-        emit(const TakeAttendanceStudentNotFound('كود QR غير صالح'));
+        await _emitNotFound('كود QR غير صالح', lecture.id);
         return;
       }
 
@@ -55,18 +72,16 @@ class TakeAttendanceCubit extends Cubit<TakeAttendanceState> {
           studentCode,
         );
         if (studentInOtherCenter == null) {
-          emit(
-            TakeAttendanceStudentNotFound(
-              'لم يتم العثور على الطالب بالكود: $studentCode',
-            ),
+          await _emitNotFound(
+            'لم يتم العثور على الطالب بالكود: $studentCode',
+            lecture.id,
           );
         } else {
-          emit(
-            TakeAttendanceStudentNotFound(
-              'الطالب ${studentInOtherCenter.name} موجود لكن لا يمكن تسجيل حضوره هنا لأنه ليس في هذا السنتر\n'
-              'سنتر الطالب: ${studentInOtherCenter.center.name}\n'
-              'سنتر المحاضرة: ${lecture.center.name}',
-            ),
+          await _emitNotFound(
+            'الطالب ${studentInOtherCenter.name} موجود لكن لا يمكن تسجيل حضوره هنا لأنه ليس في هذا السنتر\n'
+            'سنتر الطالب: ${studentInOtherCenter.center.name}\n'
+            'سنتر المحاضرة: ${lecture.center.name}',
+            lecture.id,
           );
         }
         return;
@@ -74,10 +89,9 @@ class TakeAttendanceCubit extends Cubit<TakeAttendanceState> {
 
       // التحقق من أن الطالب من نفس الصف الدراسي
       if (student.classroom.id != lecture.classroom.id) {
-        emit(
-          TakeAttendanceStudentNotFound(
-            'هذا الطالب ليس من ${lecture.classroom.name}\nالطالب من ${student.classroom.name}',
-          ),
+        await _emitNotFound(
+          'هذا الطالب ليس من ${lecture.classroom.name}\nالطالب من ${student.classroom.name}',
+          lecture.id,
         );
         return;
       }
@@ -87,6 +101,11 @@ class TakeAttendanceCubit extends Cubit<TakeAttendanceState> {
     } catch (e) {
       emit(TakeAttendanceError('خطأ في مسح QR: ${e.toString()}'));
     }
+  }
+
+  Future<void> _emitNotFound(String message, int lectureId) async {
+    emit(TakeAttendanceStudentNotFound(message));
+    await loadAttendance(lectureId);
   }
 
   /// [anyCenter] للتعويض: الطالب ممكن يكون من أي سنتر (بنفس صف المحاضرة).
@@ -122,13 +141,107 @@ class TakeAttendanceCubit extends Cubit<TakeAttendanceState> {
           classroomId: lecture.classroom.id,
           centerId: anyCenter ? null : lecture.center.id,
         );
-        emit(
-          currentState.copyWith(searchResults: students, searchQuery: query),
-        );
+        // نستخدم أحدث state عشان مانرجّعش تواريخ الفحص أو القائمة لنسخة قديمة
+        final latestState = state;
+        if (latestState is! TakeAttendanceLoaded) return;
+        emit(latestState.copyWith(searchResults: students, searchQuery: query));
       } catch (e) {
         emit(TakeAttendanceError('فشل في البحث: ${e.toString()}'));
       }
     });
+  }
+
+  List<String> get checkDates => List.unmodifiable(_checkDates);
+
+  void addCheckDate(DateTime date) {
+    final formatted =
+        '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    if (_checkDates.contains(formatted)) return;
+    _checkDates
+      ..add(formatted)
+      ..sort();
+    _emitCheckDates();
+  }
+
+  void removeCheckDate(String date) {
+    _checkDates.remove(date);
+    _emitCheckDates();
+  }
+
+  void resetCheckDates() {
+    _checkDates.clear();
+    _emitCheckDates();
+  }
+
+  void _emitCheckDates() {
+    final currentState = state;
+    if (currentState is TakeAttendanceLoaded) {
+      emit(currentState.copyWith(checkDates: List.of(_checkDates)));
+    }
+  }
+
+  void _emitCheckingAbsence() {
+    final currentState = state;
+    if (currentState is TakeAttendanceLoaded) {
+      emit(
+        currentState.copyWith(checkingAbsenceOf: List.of(_checkingAbsenceOf)),
+      );
+    }
+  }
+
+  /// فحص غياب الطالب في تواريخ الفحص (لو في تواريخ وفي إنترنت فقط).
+  /// مابيوقفش تسجيل الحضور، وأثناء الفحص بيظهر مؤشر تحميل في الشاشة.
+  Future<void> _checkAbsence(
+    StudentEntity student,
+    LectureEntity lecture,
+  ) async {
+    if (_checkDates.isEmpty) return;
+
+    // مفيش إنترنت: مابنعملش فحص خالص
+    try {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      if (connectivityResult.contains(ConnectivityResult.none)) return;
+    } catch (_) {
+      return;
+    }
+    if (isClosed) return;
+
+    _checkingAbsenceOf.add(student.name);
+    _emitCheckingAbsence();
+
+    TakeAttendanceState? resultState;
+    try {
+      final result = await checkStudentAbsenceUseCase(
+        dates: List.of(_checkDates),
+        classroomId: lecture.classroom.id,
+        centerId: lecture.center.id,
+        studentCode: student.studentId,
+      ).timeout(_absenceCheckTimeout);
+
+      resultState = result.fold<TakeAttendanceState?>(
+        (error) => TakeAttendanceAbsenceCheckFailed(
+          'تعذر فحص غياب ${student.name}: $error',
+        ),
+        (absence) => absence.hasAbsence
+            ? TakeAttendanceAbsenceFound(student, absence)
+            : null,
+      );
+    } on TimeoutException {
+      resultState = TakeAttendanceAbsenceCheckFailed(
+        'تعذر فحص غياب ${student.name}: انتهت مهلة الاتصال',
+      );
+    } catch (_) {
+      resultState = TakeAttendanceAbsenceCheckFailed(
+        'تعذر فحص غياب ${student.name}',
+      );
+    }
+
+    _checkingAbsenceOf.remove(student.name);
+    if (isClosed) return;
+
+    if (resultState != null) emit(resultState);
+    // بيرجّع Loaded بدون مؤشر التحميل
+    await loadAttendance(lecture.id);
   }
 
   void clearSearch() {
@@ -273,6 +386,9 @@ class TakeAttendanceCubit extends Cubit<TakeAttendanceState> {
 
       // Reload attendance list
       await loadAttendance(lecture.id);
+
+      // مش بنستنى الفحص عشان شاشة الـ QR ماتتأخرش في الرجوع
+      unawaited(_checkAbsence(student, lecture));
     } catch (e) {
       emit(TakeAttendanceError('فشل في إضافة الحضور: ${e.toString()}'));
       if (state is TakeAttendanceLoaded) {

@@ -60,6 +60,7 @@ import 'package:samy_mossad_assistant/modules/lectures/data_source/attendance_re
 import 'package:samy_mossad_assistant/modules/lectures/data_source/attendance_repository_impl.dart';
 import 'package:samy_mossad_assistant/modules/lectures/domain/repository/attendance_repository.dart';
 import 'package:samy_mossad_assistant/modules/lectures/domain/usecases/add_make_up_student_usecase.dart';
+import 'package:samy_mossad_assistant/modules/lectures/domain/usecases/check_student_absence_usecase.dart';
 import 'package:samy_mossad_assistant/modules/lectures/domain/usecases/sync_attendance_usecase.dart';
 import 'package:samy_mossad_assistant/modules/lectures/presentation/cubit/take_attendance_cubit.dart';
 
@@ -122,6 +123,7 @@ Future<void> init() async {
       databaseHelper: sl(),
       syncAttendanceUseCase: sl(),
       addMakeUpStudentUseCase: sl(),
+      checkStudentAbsenceUseCase: sl(),
     ),
   );
 
@@ -133,6 +135,7 @@ Future<void> init() async {
   sl.registerLazySingleton(() => GetLectureStudentsUseCase(sl()));
   sl.registerLazySingleton(() => SyncAttendanceUseCase(sl()));
   sl.registerLazySingleton(() => AddMakeUpStudentUseCase(sl()));
+  sl.registerLazySingleton(() => CheckStudentAbsenceUseCase(sl()));
 
   // Repository
   sl.registerLazySingleton<LecturesRepository>(() => LecturesRepositoryImpl(remoteDataSource: sl()));

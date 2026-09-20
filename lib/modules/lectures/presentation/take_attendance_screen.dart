@@ -4,6 +4,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:samy_mossad_assistant/core/injection_container.dart' as di;
 import 'package:samy_mossad_assistant/modules/lectures/domain/entities/lecture_entity.dart';
 import 'package:samy_mossad_assistant/modules/lectures/domain/entities/local_attendance_entity.dart';
+import 'package:samy_mossad_assistant/modules/lectures/presentation/absence_dates_sheet.dart';
+import 'package:samy_mossad_assistant/modules/lectures/presentation/student_absence_dialog.dart';
 import 'package:samy_mossad_assistant/modules/lectures/presentation/cubit/take_attendance_cubit.dart';
 import 'package:samy_mossad_assistant/modules/lectures/presentation/cubit/take_attendance_state.dart';
 import 'package:samy_mossad_assistant/modules/students/domain/entities/student_entity.dart';
@@ -43,6 +45,15 @@ class TakeAttendanceScreen extends StatelessWidget {
             );
           } else if (state is TakeAttendanceStudentFound) {
             _showStudentConfirmDialog(context, state.student);
+          } else if (state is TakeAttendanceAbsenceFound) {
+            showStudentAbsenceDialog(context, state.student, state.absence);
+          } else if (state is TakeAttendanceAbsenceCheckFailed) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: Colors.orange,
+              ),
+            );
           }
         },
         child: Scaffold(
@@ -147,6 +158,9 @@ class TakeAttendanceScreen extends StatelessWidget {
 
                 return Column(
                   children: [
+                    if (loadedState.checkingAbsenceOf.isNotEmpty)
+                      _AbsenceCheckBanner(names: loadedState.checkingAbsenceOf),
+
                     // Lecture Info Card
                     Container(
                       margin: const EdgeInsets.all(16),
@@ -238,18 +252,44 @@ class TakeAttendanceScreen extends StatelessWidget {
 
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: () => _showMakeUpSearchDialog(context),
-                          icon: const Icon(Icons.swap_horiz),
-                          label: const Text('تعويض طالب'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.orange,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () => _showMakeUpSearchDialog(context),
+                              icon: const Icon(Icons.swap_horiz),
+                              label: const Text('تعويض طالب'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () => _showAbsenceDatesSheet(context),
+                              icon: const Icon(Icons.event_busy),
+                              label: Text(
+                                loadedState.checkDates.isEmpty
+                                    ? 'فحص الغياب'
+                                    : 'فحص الغياب (${loadedState.checkDates.length})',
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: loadedState.checkDates.isEmpty
+                                    ? Colors.blueGrey
+                                    : Colors.red,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
 
@@ -351,6 +391,19 @@ class TakeAttendanceScreen extends StatelessWidget {
     );
   }
 
+  void _showAbsenceDatesSheet(BuildContext context) {
+    final cubit = context.read<TakeAttendanceCubit>();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) =>
+          BlocProvider.value(value: cubit, child: const AbsenceDatesSheet()),
+    );
+  }
+
   void _showSearchSheet(BuildContext context, Widget sheet) {
     final cubit = context.read<TakeAttendanceCubit>();
     // مسح نتائج البحث القديمة عشان مايظهرش نتائج من بحث تاني
@@ -427,6 +480,45 @@ class TakeAttendanceScreen extends StatelessWidget {
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// مؤشر تحميل أثناء فحص غياب الطالب في الخلفية
+class _AbsenceCheckBanner extends StatelessWidget {
+  final List<String> names;
+
+  const _AbsenceCheckBanner({required this.names});
+
+  @override
+  Widget build(BuildContext context) {
+    final text = names.length == 1
+        ? 'جاري فحص غياب ${names.first}...'
+        : 'جاري فحص غياب ${names.length} طلاب...';
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),

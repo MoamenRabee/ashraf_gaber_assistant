@@ -15,6 +15,7 @@ class Endpoints {
   static const String reopenLecture = "/assistants/reopenLecture";
   static const String createLecture = "/assistants/createLecture";
   static const String addMakeUpStudent = "/assistants/addMakeUpStudent";
+  static const String checkStudentAbsence = "/assistants/checkStudentAbsence";
   static const String getLocalExams = "/assistants/local-exams";
   static String getExamResults(int examId) => "/assistants/local-exams/$examId/results";
   static String getExamStudents(int classroomId, int centerId) =>
